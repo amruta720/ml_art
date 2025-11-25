@@ -57,9 +57,14 @@ RULES (must follow 100% strictly):
    - Use simple, clear language
    - Include sensory details
    - Keep narration focused and concise
-   - Make dialogue sound natural
+   - Make dialogue sound natural and expressive
 
-7. Dialogues can be empty array [] if no dialogue is needed on that page.
+7. **IMPORTANT: Include dialogue on MOST pages.**
+   - At least 70% of pages should have dialogue
+   - Each page should have 1-3 dialogue lines
+   - Use dialogue to show character emotions and relationships
+   - Only skip dialogue if the scene is purely descriptive
+   - dialogues must be an array with at least one object (not empty [])
 
 VALID JSON EXAMPLE OUTPUT:
 
@@ -72,6 +77,24 @@ VALID JSON EXAMPLE OUTPUT:
         {
           "speaker": "Ellie",
           "text": "What beautiful colors! I wonder what these are for?"
+        }
+      ]
+    },
+    {
+      "page_number": 2,
+      "narration": "Ellie dips her paintbrush into the blue paint and sweeps it across a large canvas. A beautiful sky appears! Her forest friends gather around to watch, their eyes wide with wonder.",
+      "dialogues": [
+        {
+          "speaker": "Squirrel",
+          "text": "Wow, Ellie! You're making magic!"
+        },
+        {
+          "speaker": "Birdie",
+          "text": "Can you paint me flying in that sky?"
+        },
+        {
+          "speaker": "Ellie",
+          "text": "Of course! Let me add some clouds for you to play in."
         }
       ]
     }
@@ -132,8 +155,34 @@ Scene: {page['scene_description']}
 
         prompt += """
 Now, write flowing narration and natural dialogue for each page.
+
+CRITICAL REQUIREMENTS:
+1. Include dialogue on at least 70% of pages
+2. Make characters talk to express emotions, thoughts, and reactions
+3. Use dialogue to advance the story and show relationships
+4. Each dialogue line should reveal something about the character
+5. Keep dialogue natural and age-appropriate
+
+EXAMPLE OF GOOD PAGE WITH DIALOGUE:
+{
+  "page_number": 1,
+  "narration": "Luna the bunny hopped through the meadow, her nose twitching with excitement. She spotted a shiny red balloon floating by.",
+  "dialogues": [
+    {
+      "speaker": "Luna",
+      "text": "Oh wow! Where did you come from, little balloon?"
+    },
+    {
+      "speaker": "Balloon",
+      "text": "I escaped from the birthday party! Want to come on an adventure?"
+    }
+  ]
+}
+
 Follow the JSON format specified in your instructions.
-Make the text engaging, age-appropriate, and emotionally resonant."""
+Make the text engaging, age-appropriate, and emotionally resonant.
+
+REMEMBER: Most pages need dialogue! Characters should speak their feelings and thoughts."""
 
         logger.info(f"Generating text for {len(pages_outline)} pages of '{story_title}'")
 
@@ -159,13 +208,27 @@ Make the text engaging, age-appropriate, and emotionally resonant."""
                 )
 
             # Validate each page
+            pages_with_dialogue = 0
+            total_dialogue_lines = 0
+
             for page in text_data["pages"]:
                 if "page_number" not in page or "narration" not in page:
                     raise AIGenerationError(f"Page missing required fields: {page}")
                 if "dialogues" not in page:
                     page["dialogues"] = []
+                    logger.warning(f"Page {page.get('page_number', '?')} missing 'dialogues' field, setting to empty array")
+
+                # Count dialogue statistics
+                if page["dialogues"] and len(page["dialogues"]) > 0:
+                    pages_with_dialogue += 1
+                    total_dialogue_lines += len(page["dialogues"])
+                    logger.info(f"Page {page['page_number']}: {len(page['dialogues'])} dialogue lines from {[d.get('speaker', '?') for d in page['dialogues']]}")
+                else:
+                    logger.warning(f"Page {page['page_number']}: NO DIALOGUE (narration only)")
 
             logger.info(f"Story text generated for {len(text_data['pages'])} pages")
+            logger.info(f"Dialogue stats: {pages_with_dialogue}/{len(text_data['pages'])} pages have dialogue ({pages_with_dialogue/len(text_data['pages'])*100:.1f}%)")
+            logger.info(f"Total dialogue lines: {total_dialogue_lines}")
 
             return text_data
 

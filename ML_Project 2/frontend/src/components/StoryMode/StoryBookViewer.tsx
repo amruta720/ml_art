@@ -3,16 +3,73 @@
  *
  * Displays pages in a real children's book format:
  * - Left page: Full-page illustration
- * - Right page: Title, narration, and dialogues
+ * - Right page: Title, narration, and dialogues (with inline AI editing)
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { StoryBook, DialogueLine } from '../../types';
+import InlineEditableText from '../common/InlineEditableText';
+import InlineEditableDialogue from '../common/InlineEditableDialogue';
 
 interface StoryBookViewerProps {
   storybook: StoryBook;
 }
 
-const StoryBookViewer: React.FC<StoryBookViewerProps> = ({ storybook }) => {
+const StoryBookViewer: React.FC<StoryBookViewerProps> = ({ storybook: initialStorybook }) => {
+  const [storybook, setStorybook] = useState<StoryBook>(initialStorybook);
+
+  // Update narration for a specific page
+  const handleNarrationChange = (pageNumber: number, newNarration: string) => {
+    setStorybook((prev) => ({
+      ...prev,
+      pages: prev.pages.map((page) =>
+        page.page_number === pageNumber
+          ? { ...page, narration: newNarration }
+          : page
+      ),
+    }));
+  };
+
+  // Update dialogue for a specific page and dialogue index
+  const handleDialogueChange = (
+    pageNumber: number,
+    dialogueIndex: number,
+    newText: string
+  ) => {
+    setStorybook((prev) => ({
+      ...prev,
+      pages: prev.pages.map((page) =>
+        page.page_number === pageNumber
+          ? {
+              ...page,
+              dialogues: page.dialogues.map((dialogue, idx) =>
+                idx === dialogueIndex ? { ...dialogue, text: newText } : dialogue
+              ),
+            }
+          : page
+      ),
+    }));
+  };
+
+  // Update speaker name for a specific page and dialogue index
+  const handleSpeakerChange = (
+    pageNumber: number,
+    dialogueIndex: number,
+    newSpeaker: string
+  ) => {
+    setStorybook((prev) => ({
+      ...prev,
+      pages: prev.pages.map((page) =>
+        page.page_number === pageNumber
+          ? {
+              ...page,
+              dialogues: page.dialogues.map((dialogue, idx) =>
+                idx === dialogueIndex ? { ...dialogue, speaker: newSpeaker } : dialogue
+              ),
+            }
+          : page
+      ),
+    }));
+  };
   return (
     <div className="storybook-viewer">
       {/* Story Title Section */}
@@ -59,19 +116,33 @@ const StoryBookViewer: React.FC<StoryBookViewerProps> = ({ storybook }) => {
               <div className="page-content">
                 <h2 className="page-title">{page.title}</h2>
 
-                <div className="page-narration">
-                  {page.narration.split('\n').map((paragraph, idx) => (
-                    <p key={idx}>{paragraph}</p>
-                  ))}
-                </div>
+                {/* Editable Narration */}
+                <InlineEditableText
+                  text={page.narration}
+                  onTextChange={(newText: string) =>
+                    handleNarrationChange(page.page_number, newText)
+                  }
+                  context={`Narration on page ${page.page_number} of story "${storybook.meta.title}"`}
+                  className="page-narration"
+                  placeholder="Click to add narration..."
+                />
 
-                {page.dialogues.length > 0 && (
+                {/* Editable Dialogues */}
+                {page.dialogues && page.dialogues.length > 0 && (
                   <div className="page-dialogues">
                     {page.dialogues.map((dialogue: DialogueLine, idx: number) => (
-                      <div key={idx} className="dialogue-line">
-                        <span className="dialogue-speaker">{dialogue.speaker}:</span>
-                        <span className="dialogue-text">"{dialogue.text}"</span>
-                      </div>
+                      <InlineEditableDialogue
+                        key={idx}
+                        speaker={dialogue.speaker}
+                        text={dialogue.text}
+                        onTextChange={(newText: string) =>
+                          handleDialogueChange(page.page_number, idx, newText)
+                        }
+                        onSpeakerChange={(newSpeaker: string) =>
+                          handleSpeakerChange(page.page_number, idx, newSpeaker)
+                        }
+                        context={`Page ${page.page_number} of story "${storybook.meta.title}"`}
+                      />
                     ))}
                   </div>
                 )}

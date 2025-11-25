@@ -12,6 +12,11 @@ from core.exceptions import AIGenerationError, ModelNotLoadedError
 logger = logging.getLogger(__name__)
 
 
+class StabilityInsufficientBalance(Exception):
+    """Raised when Stability AI reports insufficient balance or credits."""
+    pass
+
+
 class StabilityAIImageGenerator:
     """Handles image generation using Stability AI API (SDXL)."""
 
@@ -103,13 +108,35 @@ class StabilityAIImageGenerator:
             )
 
             if response.status_code != 200:
-                error_msg = f"Stability AI API error: {response.status_code}"
+                # Try to get detailed error message
+                error_msg = response.text
                 try:
                     error_data = response.json()
-                    error_msg = f"Stability AI API error: {error_data.get('message', response.text)}"
+                    error_msg = error_data.get('message', response.text)
                 except:
                     pass
-                raise AIGenerationError(error_msg)
+
+                # Check for insufficient balance conditions
+                balance_indicators = [
+                    "not have enough balance",
+                    "insufficient balance",
+                    "not enough credits",
+                    "grant"
+                ]
+
+                error_msg_lower = error_msg.lower()
+                is_balance_error = any(indicator in error_msg_lower for indicator in balance_indicators)
+
+                # Raise insufficient balance error for credit-related issues
+                if response.status_code in [400, 402, 403, 429] and is_balance_error:
+                    raise StabilityInsufficientBalance(f"Stability AI insufficient balance: {error_msg}")
+
+                # For 402/403/429 without clear balance message, also assume it's balance-related
+                if response.status_code in [402, 403, 429]:
+                    raise StabilityInsufficientBalance(f"Stability AI credit/balance issue: {error_msg}")
+
+                # Other errors
+                raise AIGenerationError(f"Stability AI API error: {error_msg}")
 
             # Parse response
             data = response.json()
@@ -133,6 +160,9 @@ class StabilityAIImageGenerator:
             # Return relative URL path
             return f"/static/images/{filename}"
 
+        except StabilityInsufficientBalance:
+            # Re-raise balance errors without conversion (for fallback handling)
+            raise
         except AIGenerationError:
             raise
         except Exception as e:
@@ -202,8 +232,35 @@ class StabilityAIImageGenerator:
             )
 
             if response.status_code != 200:
+                # Try to get detailed error message
+                error_msg = response.text
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get('message', response.text)
+                except:
+                    pass
+
+                # Check for insufficient balance conditions
+                balance_indicators = [
+                    "not have enough balance",
+                    "insufficient balance",
+                    "not enough credits",
+                    "grant"
+                ]
+
+                error_msg_lower = error_msg.lower()
+                is_balance_error = any(indicator in error_msg_lower for indicator in balance_indicators)
+
+                # Raise insufficient balance error for credit-related issues
+                if response.status_code in [400, 402, 403, 429] and is_balance_error:
+                    raise StabilityInsufficientBalance(f"Stability AI insufficient balance: {error_msg}")
+
+                # For 402/403/429 without clear balance message, also assume it's balance-related
+                if response.status_code in [402, 403, 429]:
+                    raise StabilityInsufficientBalance(f"Stability AI credit/balance issue: {error_msg}")
+
+                # For other errors, fallback to text-to-image
                 logger.warning(f"Image-to-image failed ({response.status_code}), falling back to text-to-image")
-                # Fallback to regular generation
                 return self.generate_image(prompt, negative_prompt)
 
             # Parse response
@@ -227,6 +284,9 @@ class StabilityAIImageGenerator:
 
             return f"/static/images/{filename}"
 
+        except StabilityInsufficientBalance:
+            # Re-raise balance errors without conversion (for fallback handling)
+            raise
         except AIGenerationError:
             raise
         except Exception as e:

@@ -142,8 +142,8 @@ Follow the JSON format specified in your instructions."""
         logger.info(f"Generating art prompts for {len(pages_data)} pages of '{story_title}'")
 
         try:
-            # Call Ollama
-            response_text = self._call_llm(prompt, temperature=0.7, max_tokens=2000)
+            # Call Ollama - increased max_tokens for art prompts
+            response_text = self._call_llm(prompt, temperature=0.7, max_tokens=3000)
 
             # Parse JSON response with robust cleanup
             try:

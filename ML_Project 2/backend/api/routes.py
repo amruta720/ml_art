@@ -80,8 +80,9 @@ async def upload_asset(
         if not file.content_type:
             raise HTTPException(status_code=400, detail="File type not specified")
 
-        # Create storage directory
-        storage_dir = Path("static/assets")
+        # Create storage directory (use absolute path)
+        base_dir = Path(__file__).parent.parent  # backend directory
+        storage_dir = base_dir / "static" / "assets"
         storage_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate unique filename

@@ -29,6 +29,10 @@ def clean_and_parse_json(response_text: str) -> dict:
         text = text[:-3]
     text = text.strip()
 
+    # Remove invisible/control characters except newlines and tabs
+    # Keep \n (10), \r (13), \t (9) but remove other control chars
+    text = ''.join(char for char in text if ord(char) >= 32 or char in '\n\r\t')
+
     # Step 2: Try parsing as-is
     try:
         return json.loads(text)
@@ -41,7 +45,19 @@ def clean_and_parse_json(response_text: str) -> dict:
         return json.loads(text)
     except json.JSONDecodeError as e:
         logger.error(f"JSON repair failed: {e}")
-        logger.error(f"Problematic text (first 500 chars): {text[:500]}")
+        logger.error(f"Full response length: {len(text)} characters")
+        logger.error(f"Response (first 1000 chars): {text[:1000]}")
+        logger.error(f"Response (last 500 chars): {text[-500:]}")
+
+        # Debug: show hex dump of problematic area
+        if hasattr(e, 'pos') and e.pos:
+            start = max(0, e.pos - 20)
+            end = min(len(text), e.pos + 20)
+            problem_area = text[start:end]
+            hex_dump = ' '.join(f'{ord(c):02x}' for c in problem_area)
+            logger.error(f"Hex dump around error position {e.pos}: {hex_dump}")
+            logger.error(f"Text around error: {repr(problem_area)}")
+
         raise
 
 
@@ -55,26 +71,52 @@ def fix_common_json_issues(text: str) -> str:
     Returns:
         str: Fixed JSON text
     """
+    # Only apply fixes if needed - don't break valid JSON!
+    # First, try to parse as-is
+    try:
+        json.loads(text)
+        # JSON is valid, return it unchanged
+        return text
+    except json.JSONDecodeError:
+        # JSON is broken, apply fixes
+        pass
+
     # Remove trailing commas before closing braces/brackets
     text = re.sub(r',(\s*[}\]])', r'\1', text)
 
-    # Fix single quotes to double quotes (careful with contractions)
-    # Only replace single quotes that look like JSON string delimiters
-    text = re.sub(r"'([^']*)'(\s*:)", r'"\1"\2', text)  # Keys
-    text = re.sub(r":\s*'([^']*)'", r': "\1"', text)    # Values after colons
-
-    # Fix unescaped newlines in strings
-    # This is tricky - we need to find strings and escape newlines in them
-    # For now, just remove literal newlines between quotes
-    text = re.sub(r'"\s*\n\s*"', '" "', text)
-
-    # Fix missing commas between array elements (heuristic)
+    # Fix missing commas between array elements
     # Look for }\n\s*{ pattern (two objects without comma between)
     text = re.sub(r'}\s*\n\s*{', '},\n{', text)
 
-    # Fix missing commas between object properties (heuristic)
-    # Look for "\n\s*" pattern (string value followed by new property without comma)
-    text = re.sub(r'"\s*\n\s*"([^"]+)"(\s*:)', r'",\n"\1"\2', text)
+    # Fix incomplete JSON - check if braces/brackets are balanced
+    text = balance_json_brackets(text)
+
+    return text
+
+
+def balance_json_brackets(text: str) -> str:
+    """
+    Ensure JSON has balanced brackets and braces.
+
+    Args:
+        text: JSON text
+
+    Returns:
+        str: JSON with balanced brackets
+    """
+    # Count opening and closing braces/brackets
+    open_brace = text.count('{')
+    close_brace = text.count('}')
+    open_bracket = text.count('[')
+    close_bracket = text.count(']')
+
+    # Add missing closing braces
+    if open_brace > close_brace:
+        text = text.rstrip() + '\n' + ('  ' * (open_bracket - close_bracket)) + ('}' * (open_brace - close_brace))
+
+    # Add missing closing brackets
+    if open_bracket > close_bracket:
+        text = text.rstrip() + (']' * (open_bracket - close_bracket))
 
     return text
 

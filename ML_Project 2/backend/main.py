@@ -25,6 +25,21 @@ async def lifespan(app: FastAPI):
     try:
         unified_image_service.load_model()
         logger.info(f"Models loaded successfully (backend: {settings.image_backend})")
+
+        # Pre-load local SD as backup when using Stability AI
+        if settings.image_backend == "stability_ai":
+            logger.info("Pre-loading local Stable Diffusion as backup for Stability AI fallback...")
+            try:
+                from services.image_generator import image_generator
+                if not image_generator.is_loaded():
+                    image_generator.load_model()
+                    logger.info("Local Stable Diffusion backup loaded successfully")
+                else:
+                    logger.info("Local Stable Diffusion already loaded")
+            except Exception as e:
+                logger.warning(f"Failed to pre-load local SD backup: {e}")
+                logger.warning("Fallback will load on-demand if needed")
+
     except Exception as e:
         logger.error(f"Failed to load models: {e}")
         logger.warning("Application starting without models loaded")

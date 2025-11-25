@@ -6,7 +6,7 @@ from pathlib import Path
 from config import settings
 from services.image_generator import image_generator
 from services.gemini_image import gemini_image_generator, GEMINI_AVAILABLE
-from services.stability_ai_image import stability_ai_generator
+from services.stability_ai_image import stability_ai_generator, StabilityInsufficientBalance
 from core.exceptions import AIGenerationError, ModelNotLoadedError
 
 logger = logging.getLogger(__name__)
@@ -85,14 +85,33 @@ class UnifiedImageService:
             )
 
         if self.backend == "stability_ai":
-            # Map width/height to aspect ratio for Stability AI
-            aspect_ratio = self._get_aspect_ratio(width, height)
-            return stability_ai_generator.generate_image(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                aspect_ratio=aspect_ratio,
-                number_of_images=1
-            )
+            try:
+                # Map width/height to aspect ratio for Stability AI
+                aspect_ratio = self._get_aspect_ratio(width, height)
+                return stability_ai_generator.generate_image(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    aspect_ratio=aspect_ratio,
+                    number_of_images=1
+                )
+            except StabilityInsufficientBalance as e:
+                # Automatically fallback to local Stable Diffusion when credits run out
+                logger.warning(f"Stability AI credits exhausted: {e}")
+                logger.info("Falling back to local Stable Diffusion for image generation")
+
+                # Ensure local SD is loaded
+                if not image_generator.is_loaded():
+                    logger.info("Loading local Stable Diffusion model...")
+                    image_generator.load_model()
+
+                # Generate with local SD
+                return image_generator.generate_image(
+                    prompt=prompt,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    width=width,
+                    height=height
+                )
         elif self.backend == "gemini_imagen":
             # Map width/height to aspect ratio for Gemini
             aspect_ratio = self._get_aspect_ratio(width, height)
@@ -146,13 +165,33 @@ class UnifiedImageService:
             str: Path to generated image
         """
         if self.backend == "stability_ai":
-            # Stability AI supports image-to-image
-            return stability_ai_generator.generate_image_with_reference(
-                prompt=prompt,
-                reference_image_path=reference_image,
-                negative_prompt=negative_prompt,
-                style_strength=0.6  # Moderate influence from reference
-            )
+            try:
+                # Stability AI supports image-to-image
+                return stability_ai_generator.generate_image_with_reference(
+                    prompt=prompt,
+                    reference_image_path=reference_image,
+                    negative_prompt=negative_prompt,
+                    style_strength=0.6  # Moderate influence from reference
+                )
+            except StabilityInsufficientBalance as e:
+                # Automatically fallback to local Stable Diffusion when credits run out
+                logger.warning(f"Stability AI credits exhausted during reference generation: {e}")
+                logger.info("Falling back to local Stable Diffusion for image generation")
+
+                # Ensure local SD is loaded
+                if not image_generator.is_loaded():
+                    logger.info("Loading local Stable Diffusion model...")
+                    image_generator.load_model()
+
+                # Fallback to regular text-to-image with local SD (reference feature not supported)
+                logger.info("Note: Local SD doesn't support reference images, using text-to-image")
+                return image_generator.generate_image(
+                    prompt=prompt,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    width=width,
+                    height=height
+                )
         else:
             # Fallback to regular generation for backends that don't support it
             logger.warning(f"Backend {self.backend} doesn't support reference images, using regular generation")

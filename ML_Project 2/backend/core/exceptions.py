@@ -14,3 +14,8 @@ class ModelNotLoadedError(Exception):
 class InvalidPromptError(Exception):
     """Raised when prompt validation fails."""
     pass
+
+
+class StabilityInsufficientBalanceError(Exception):
+    """Raised when Stability AI API returns insufficient balance/credits error."""
+    pass
